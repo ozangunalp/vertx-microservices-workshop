@@ -1,0 +1,14 @@
+rootProject.name = 'vertx-microservice-workshop'
+include ':vertx-workshop-common'
+include ':quote-generator'
+include ':portfolio-service'
+include ':audit-service'
+include ':compulsive-traders'
+include ':trader-dashboard'
+
+project(':vertx-workshop-common').projectDir = "$rootDir/vertx-workshop-common" as File
+project(':quote-generator').projectDir = "$rootDir/quote-generator" as File
+project(':portfolio-service').projectDir = "$rootDir/portfolio-service" as File
+project(':audit-service').projectDir = "$rootDir/audit-service" as File
+project(':compulsive-traders').projectDir = "$rootDir/compulsive-traders" as File
+project(':trader-dashboard').projectDir = "$rootDir/trader-dashboard" as File
