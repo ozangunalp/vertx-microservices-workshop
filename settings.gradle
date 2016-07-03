@@ -1,3 +1,7 @@
+pluginRepositories {
+    gradlePluginPortal()
+}
+
 rootProject.name = 'vertx-microservice-workshop'
 include ':vertx-workshop-common'
 include ':quote-generator'

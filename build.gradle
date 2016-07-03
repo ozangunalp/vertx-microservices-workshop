@@ -1,14 +1,19 @@
+buildscript {
+    repositories { mavenLocal() }
+    dependencies {
+        classpath 'se.transmode.gradle:gradle-docker:1.3-SNAPSHOT'
+    }
+}
+
 plugins {
     id "com.github.johnrengelman.shadow" version "1.2.3"
+//    id "se.transmode.gradle.docker" version "1.3-SNAPSHOT"
 }
 
 def mainClass = 'io.vertx.core.Launcher'
 def codeGenProcessor = 'io.vertx.codegen.CodeGenProcessor'
-
-//project.properties.each {println "   $it"}
-
-
-println System.getProperty("java.version")
+def dockerGroupName = 'vertx-microservice-workshop'
+def dockerServiceType = 'unknown'
 
 allprojects {
     apply plugin: 'maven'
@@ -18,14 +23,18 @@ allprojects {
     version = '1.0-SNAPSHOT'
 }
 
+
 subprojects {
     apply plugin: 'java'
     apply plugin: 'groovy'
     apply plugin: 'com.github.johnrengelman.shadow'
+    apply plugin: 'docker'
     sourceCompatibility = 1.8
     targetCompatibility = 1.8
 
     def generateSrcPath = "$projectDir/src/main/generated"
+
+    ext.dockerServiceType = dockerServiceType
 
     task generateServiceProxy(type: JavaCompile, description: 'Generates ServiceProxies') {
         source = sourceSets.main.java
@@ -36,9 +45,7 @@ subprojects {
                                 "-AoutputDirectory=$generateSrcPath"
         ]
     }
-
     compileJava.dependsOn generateServiceProxy
-
 
     shadowJar {
         mergeServiceFiles()
@@ -50,6 +57,36 @@ subprojects {
         }
         classifier 'fat'
         dependsOn build
+    }
+
+    docker {
+        maintainer = 'Ozan Gunalp <ozangunalp@gmail.com>'
+        baseImage = 'java:8'
+    }
+
+    task dockerBuild(type: Docker) {
+        group = dockerGroupName
+        applicationName = project.name
+        tag = "$dockerGroupName/$applicationName"
+        tagVersion = project.version
+        dockerfile {
+            expose 8080
+            workdir '/opt'
+            env 'SERVICE_TYPE', {
+                project.dockerServiceType
+            }
+            run 'chmod -R 777 /opt'
+            add {
+                from shadowJar.outputs
+                from "$projectDir/src/docker"
+                into '/opt'
+            }
+            entryPoint "java -jar ${project.name}-${project.version}-fat.jar -cluster -conf config.json -cp ."
+        }
+        doLast {
+            println dockerfile.instructions
+        }
+        dependsOn shadowJar
     }
 
     sourceSets {
@@ -66,7 +103,14 @@ subprojects {
         from sourceSets.main.java, sourceSets.main.groovy, sourceSets.main.resources
     }
 
+    task packageTests(type: Jar) {
+        classifier = 'tests'
+        from sourceSets.test.output
+    }
+
     artifacts.archives packageSources
+    artifacts.archives packageTests
+
     repositories {
         mavenLocal()
 

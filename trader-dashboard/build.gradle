@@ -4,12 +4,6 @@ dependencies {
     compile project(':vertx-workshop-common')
 }
 
-task packageTests(type: Jar) {
-    from sourceSets.test.output
-    classifier = 'tests'
-}
-artifacts.archives packageTests
-
 shadowJar {
     manifest {
         attributes('Main-Verticle': 'io.vertx.workshop.dashboard.DashboardVerticle')
