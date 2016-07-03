@@ -51,7 +51,17 @@ public class AuditVerticle extends MicroServiceVerticle {
 
     // TODO
     // ----
-    future.fail("not implemented yet");
+    Future<Void> initializeDatabaseFuture = initializeDatabase(config().getBoolean("drop", false));
+    Future<HttpServer> httpServerFuture = configureTheHTTPServer();
+    Future<MessageConsumer<JsonObject>> messageConsumerFuture = retrieveThePortfolioMessageSource();
+    CompositeFuture.all(initializeDatabaseFuture, httpServerFuture, messageConsumerFuture).setHandler(ar -> {
+      if (ar.failed()){
+        future.fail(ar.cause());
+      } else {
+        messageConsumerFuture.result().handler(message -> storeInDatabase(message.body()));
+        future.complete();
+      }
+    });
     // ----
   }
 
@@ -71,7 +81,23 @@ public class AuditVerticle extends MicroServiceVerticle {
 
     //TODO
     // ----
+    jdbc.getConnection(ar -> {
+      if (ar.failed()){
+        context.fail(ar.cause());
+      } else {
+        SQLConnection connection = ar.result();
+        connection.query(SELECT_STATEMENT, result -> {
+          ResultSet set = result.result();
+          List<JsonObject> operations = set.getRows().stream()
+                  .map(json -> new JsonObject(json.getString("OPERATION")))
+                  .collect(Collectors.toList());
 
+          context.response().setStatusCode(200).end(Json.encodePrettily(operations));
+
+          connection.close();
+        });
+      }
+    });
     // ----
   }
 
@@ -80,7 +106,12 @@ public class AuditVerticle extends MicroServiceVerticle {
 
     //TODO
     //----
+    Router router = Router.router(vertx);
+    router.get("/").handler(this::retrieveOperations);
 
+    vertx.createHttpServer()
+            .requestHandler(router::accept)
+            .listen(8080, future.completer());
     //----
     return future;
   }

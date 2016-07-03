@@ -20,7 +20,27 @@ public class JavaCompulsiveTraderVerticle extends MicroServiceVerticle {
 
     //TODO
     //----
-    future.fail("no implemented yet...");
+    String company = TraderUtils.pickACompany();
+    int numberOfShares = TraderUtils.pickANumber();
+    System.out.println("Java compulsive trader configured for company " + company + " and shares: " + numberOfShares);
+    Future<MessageConsumer<JsonObject>> messageConsumerFuture = Future.future();
+    Future<PortfolioService> portfolioServiceFuture = Future.future();
+
+    MessageSource.getConsumer(discovery, new JsonObject().put("name", "market-data"), messageConsumerFuture.completer());
+    EventBusService.getProxy(discovery, PortfolioService.class, portfolioServiceFuture.completer());
+    CompositeFuture.all(messageConsumerFuture, portfolioServiceFuture).setHandler(ar -> {
+       if (ar.failed()) {
+         future.fail(ar.cause());
+       } else {
+         MessageConsumer<JsonObject> consumer = messageConsumerFuture.result();
+         PortfolioService portfolioService = portfolioServiceFuture.result();
+         consumer.handler(message -> {
+           JsonObject body = message.body();
+           TraderUtils.dumbTradingLogic(company,numberOfShares,portfolioService,body);
+         });
+         future.complete();
+       }
+    });
     // ----
   }
 

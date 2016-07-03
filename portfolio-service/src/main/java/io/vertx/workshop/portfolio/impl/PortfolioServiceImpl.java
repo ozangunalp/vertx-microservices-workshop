@@ -2,8 +2,10 @@ package io.vertx.workshop.portfolio.impl;
 
 import io.vertx.core.*;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.impl.CompositeFutureImpl;
 import io.vertx.core.json.JsonObject;
 import io.vertx.servicediscovery.ServiceDiscovery;
+import io.vertx.servicediscovery.types.HttpEndpoint;
 import io.vertx.workshop.portfolio.Portfolio;
 import io.vertx.workshop.portfolio.PortfolioService;
 
@@ -31,28 +33,40 @@ public class PortfolioServiceImpl implements PortfolioService {
   public void getPortfolio(Handler<AsyncResult<Portfolio>> resultHandler) {
     // TODO
     // ----
-
+    resultHandler.handle(Future.succeededFuture(portfolio));
     // ----
   }
 
   private void sendActionOnTheEventBus(String action, int amount, JsonObject quote, int newAmount) {
     // TODO
     // ----
-
-    // ----
+      vertx.eventBus().publish(EVENT_ADDRESS, new JsonObject()
+              .put("action", action)
+              .put("amount", amount)
+              .put("quote", quote)
+              .put("date", System.currentTimeMillis())
+              .put("owned", newAmount));
+      // ----
   }
 
   @Override
   public void evaluate(Handler<AsyncResult<Double>> resultHandler) {
     // TODO
     // ----
-
+      HttpEndpoint.getClient(discovery, new JsonObject().put("name", "CONSOLIDATION"), client -> {
+        if(client.succeeded()) {
+          HttpClient result = client.result();
+          computeEvaluation(result, resultHandler);
+        } else {
+          resultHandler.handle(Future.failedFuture(client.cause()));
+        }
+      });
     // ---
   }
 
   private void computeEvaluation(HttpClient httpClient, Handler<AsyncResult<Double>> resultHandler) {
     // We need to call the service for each company we own shares
-    List<Future> results = portfolio.getShares().entrySet().stream()
+    List<Future<Double>> results = portfolio.getShares().entrySet().stream()
         .map(entry -> getValueForCompany(httpClient, entry.getKey(), entry.getValue()))
         .collect(Collectors.toList());
 
@@ -62,13 +76,17 @@ public class PortfolioServiceImpl implements PortfolioService {
     } else {
       // We need to return only when we have all results, for this we create a composite future. The set handler
       // is called when all the futures has been assigned.
-      CompositeFuture.all(results).setHandler(
+      all(results).setHandler(
           ar -> {
-            double sum = results.stream().mapToDouble(fut -> (double) fut.result()).sum();
+            double sum = results.stream().mapToDouble(Future::result).sum();
             resultHandler.handle(Future.succeededFuture(sum));
           });
     }
   }
+
+    private static <T> CompositeFuture all(List<Future<T>> futures) {
+        return CompositeFutureImpl.all(futures.toArray(new Future[futures.size()]));
+    }
 
   private Future<Double> getValueForCompany(HttpClient client, String company, int numberOfShares) {
     // Create the future object that will  get the value once the value have been retrieved
@@ -76,7 +94,17 @@ public class PortfolioServiceImpl implements PortfolioService {
 
     //TODO
     //----
-
+      client.get("/?name"+encode(company), response -> {
+          response.exceptionHandler(future::fail);
+          if (response.statusCode() == 200) {
+              response.bodyHandler(buffer -> {
+                  Double bid = buffer.toJsonObject().getDouble("bid");
+                  future.complete(bid);
+              });
+          } else {
+              future.complete(0.0);
+          }
+      }).exceptionHandler(future::fail).end();
     // ---
 
     return future;
